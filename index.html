@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dream Web - 3D Visualization</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            background-color: #2e3b4e;
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #graph-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+        }
+    </style>
+
+    <!-- Load Scripts Here -->
+    <script>
+        function loadScript(url, callback) {
+            const script = document.createElement("script");
+            script.src = url;
+            script.onload = callback;
+            script.onerror = () => console.error(`Failed to load script: ${url}`);
+            document.head.appendChild(script);
+        }
+
+        // Load Three.js first
+        loadScript("https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js", () => {
+            console.log("Three.js loaded.");
+            // Then load ForceGraph3D
+            loadScript("https://unpkg.com/3d-force-graph@1.57.2/dist/3d-force-graph.min.js", () => {
+                console.log("ForceGraph3D loaded.");
+                initializeGraph(); // Start graph once everything is ready
+            });
+        });
+    </script>
+
+</head>
+<body>
+
+    <header>Dream Web - 3D Visualization</header>
+    <div id="graph-container"></div>
+
+    <script>
+        console.log("Waiting for scripts to load...");
+
+        // Your Google Sheets ID and API Key
+        const SPREADSHEET_ID = '1ThR-hTB8mxtP1QFFiFpVP4VRNUg0MI7p7RzurG0eS1k';
+        const API_KEY = 'AIzaSyCTSPxFJ1JL3g1MPdIyfNUT3Y-Rt6Xk9d0';
+
+        async function getDataFromGoogleSheet() {
+            const sheetUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Dreams?key=${API_KEY}`;
+            try {
+                console.log("Fetching data from Google Sheets...");
+                const response = await fetch(sheetUrl);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('Error fetching data from Google Sheets:', data.error);
+                    return { nodes: [], links: [] };
+                }
+
+                console.log("Data fetched successfully:", data);
+                const rows = data.values;
+                const nodes = [];
+                const links = [];
+                const nodeMap = {};
+
+                rows.forEach((row, index) => {
+                    if (index === 0) return;
+
+                    const nodeId = row[0];
+                    const title = row[1];
+                    const color = row[2];
+                    const themes = (row[3] || '').split(',').map(theme => theme.trim().toLowerCase());
+                    const encounters = (row[5] || '').split(',').map(encounter => encounter.trim().toLowerCase());
+
+                    if (!nodeId || !title) return;
+
+                    const node = { id: nodeId, title: title, color: color, themes: themes, encounters: encounters };
+                    nodes.push(node);
+                    nodeMap[nodeId] = node;
+
+                    nodes.forEach(otherNode => {
+                        if (otherNode.id !== nodeId) {
+                            const sharedThemes = node.themes.filter(t => otherNode.themes.includes(t));
+                            const sharedEncounters = node.encounters.filter(e => otherNode.encounters.includes(e));
+
+                            if (sharedThemes.length > 0) {
+                                links.push({ source: nodeId, target: otherNode.id, type: 'Shared Theme' });
+                            }
+                            if (sharedEncounters.length > 0) {
+                                links.push({ source: nodeId, target: otherNode.id, type: 'Shared Encounter' });
+                            }
+                        }
+                    });
+                });
+
+                console.log("Nodes:", nodes);
+                console.log("Links:", links);
+                return { nodes, links };
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                return { nodes: [], links: [] };
+            }
+        }
+
+        function initializeGraph() {
+            if (typeof ForceGraph3D === "undefined") {
+                console.error("ForceGraph3D is still not loaded!");
+                return;
+            }
+
+            console.log("Initializing the graph...");
+
+            getDataFromGoogleSheet().then(data => {
+                if (data.nodes.length === 0) {
+                    console.error("No nodes available, graph will not be created.");
+                    return;
+                }
+
+                const Graph = ForceGraph3D()(document.getElementById('graph-container'))
+                    .nodeId('id')
+                    .linkSource('source')
+                    .linkTarget('target')
+                    .nodeAutoColorBy('color')
+                    .graphData({
+                        nodes: data.nodes,
+                        links: data.links
+                    });
+
+                Graph.onNodeHover(node => {
+                    if (node) console.log(`Hovered over node: ${node.title}`);
+                });
+
+                Graph.onNodeClick(node => {
+                    if (node) alert(`Node clicked: ${node.title}`);
+                });
+            }).catch(error => {
+                console.error('Error initializing graph:', error);
+            });
+        }
+    </script>
+
+</body>
+</html>
+
